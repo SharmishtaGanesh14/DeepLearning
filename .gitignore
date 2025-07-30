@@ -1,0 +1,16 @@
+# Ignore Python cache and IDE config
+__pycache__/
+*.pyc
+.idea/
+
+# Ignore OS generated files
+*.DS_Store
+
+# Ignore environment variables and secrets
+.env
+secrets.txt
+
+# Ignore build folders
+build/
+dist/
+data/
