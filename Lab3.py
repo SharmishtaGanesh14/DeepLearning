@@ -1,47 +1,32 @@
-import numpy as np
-from fontTools.cffLib import writeCard16
+import operator
 
+def perform_operation(i1, i2, op):
+    return op(i1, i2)
 
-def sigmoid(self, z):
-    sig_z = 1 / (1 + np.exp(-z))
-    return np.array(sig_z)
+def compute_derivative(op, i1, i2):
+    if op == operator.mul:
+        return i2, i1
+    elif op == operator.add:
+        return 1, 1
+    elif op == operator.sub:
+        return 1, -1
+    elif op == operator.truediv:
+        return 1/i2, -i1/(i2**2)
+    else:
+        raise ValueError("Unsupported operation")
 
+def node(input,weight,operation):
+    output = perform_operation(input, weight, operation)
+    der1,der2= compute_derivative(operation, input, weight)
+    return output,der1,der2
 
-def tanh(self, z):
-    tanh_z = (np.exp(z) - np.exp(-z)) / (np.exp(z) + np.exp(-z))
-    return np.array(tanh_z)
-
-
-def relu(self, z):
-    ReLU = (z + np.abs(z)) / 2
-    return np.array(ReLU)
-
-
-def leaky_relu(self, z):
-    leaky_ReLU = np.maximum(0.01 * z, z)
-    return np.array(leaky_ReLU)
-
-
-def softmax(self, z):
-    exp_z = np.exp(z)
-    softmax = exp_z / np.sum(np.exp(z), axis=0, keepdims=True)
-    return np.array(softmax)
-
-
-def node(input1,input2,operation):
-    if operation == 'add':
-        return input1 + input2
-    if operation == 'max':
-        return max(input1, input2)
-    if operation == 'multiply':
-        return input1 * input2
-
+def run():
+    x1, w1, x2, w2 = 2, 3, 4, 5
+    graph={"Layer1":{operator.mul:[x1,w1],operator.mul:[x2,w2]}}
+    f1,der_f1x1,der_f1w1 = node(x1, w1, operator.mul)
+    f2,der_f2x2,der_f2w2 = node(x2, w2, operator.mul)
+    f3, der_f3f1, der_f3f2 = node(f1, f2, operator.add)
 
 def main():
-    x1,w1,x2,w2=2,3,4,5
-    f1=x1*w1
-    f2=x2*w2
-    f3=f1+f2
-
-if __name__ == "__main__":
-    main()
+    run()
+main()
