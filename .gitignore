@@ -14,6 +14,10 @@ secrets.txt
 build/
 dist/
 data/
+<<<<<<< HEAD
+=======
+D-GEX/
+>>>>>>> 8dfb3c7 (Update .gitignore to ignore large files)
 Lab10/GD462.GeneQuantRPKM.50FN.samplename.resk10.csv
 Lab10/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt
 Lab10/1000G_landmark_genes.csv
