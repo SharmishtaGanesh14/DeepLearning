@@ -14,12 +14,13 @@ from torch.utils.data import DataLoader, TensorDataset, ConcatDataset
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
 
 # Device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Data Loading
-def load_and_clean(lm_path, tg_path):
+def load_and_clean(lm_path, tg_path,n_pca_components=None):
     lm_df = pd.read_csv(lm_path, header=None).iloc[1:, 4:]
     tg_df = pd.read_csv(tg_path, header=None).iloc[1:, 4:]
 
@@ -40,11 +41,22 @@ def load_and_clean(lm_path, tg_path):
     y_val2 = y_scaler.transform(y_val2)
     y_final_test = y_scaler.transform(y_final_test)
 
+    if n_pca_components is not None:
+        pca = PCA(n_components=n_pca_components)
+        x_train = pca.fit_transform(x_train)
+        x_val = pca.transform(x_val)
+        x_val2 = pca.transform(x_val2)
+        x_final_test = pca.transform(x_final_test)
+        input_dim = n_pca_components  # Changed input dimension after PCA
+    else:
+        input_dim = X.shape[1]
+    # PCA has no effect
+
     def to_ds(x, y):
         return TensorDataset(torch.tensor(x, dtype=torch.float32),
                              torch.tensor(y, dtype=torch.float32))
 
-    return to_ds(x_train, y_train), to_ds(x_val, y_val), to_ds(x_val2, y_val2),to_ds(x_final_test,y_final_test), X.shape[1], y.shape[1]
+    return to_ds(x_train, y_train), to_ds(x_val, y_val), to_ds(x_val2, y_val2),to_ds(x_final_test,y_final_test),input_dim, y.shape[1]
 
 # Model
 class FFN(nn.Module):
@@ -52,13 +64,13 @@ class FFN(nn.Module):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Linear(input_dim, hidden1),
+            nn.Dropout(dropout),
             nn.BatchNorm1d(hidden1),
             nn.ReLU(),
-            nn.Dropout(dropout),
             nn.Linear(hidden1, hidden2),
+            nn.Dropout(dropout),
             nn.BatchNorm1d(hidden2),
             nn.ReLU(),
-            nn.Dropout(dropout),
             nn.Linear(hidden2, output_dim)
         )
 
@@ -95,8 +107,7 @@ def test(dataloader, model, loss_fn):
 
 def main():
     train_ds, val_ds, val2_ds,test_ds, input_dim, output_dim = load_and_clean(
-        "1000G_landmark_genes.csv", "1000G_target_genes.csv"
-    )
+        "1000G_landmark_genes.csv", "1000G_target_genes.csv")
 
     train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=32)
