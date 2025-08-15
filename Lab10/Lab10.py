@@ -93,80 +93,83 @@ def test(dataloader, model, loss_fn):
             total_loss += loss.item() * X.size(0)
     return total_loss / len(dataloader.dataset)
 
-# Main
-train_ds, val_ds, val2_ds,test_ds, input_dim, output_dim = load_and_clean(
-    "1000G_landmark_genes.csv", "1000G_target_genes.csv"
-)
+def main():
+    train_ds, val_ds, val2_ds,test_ds, input_dim, output_dim = load_and_clean(
+        "1000G_landmark_genes.csv", "1000G_target_genes.csv"
+    )
 
-train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_ds, batch_size=32)
-val2_loader = DataLoader(val2_ds, batch_size=32)
-test_loader = DataLoader(test_ds, batch_size=32)
+    train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=32)
+    val2_loader = DataLoader(val2_ds, batch_size=32)
+    test_loader = DataLoader(test_ds, batch_size=32)
 
-param_grid = {
-    "hidden1": [128, 256],
-    "hidden2": [64, 128],
-    "dropout": [0.2, 0.3],
-    "lr": [1e-3, 5e-4]
-}
+    param_grid = {
+        "hidden1": [128, 256],
+        "hidden2": [64, 128],
+        "dropout": [0.2, 0.3],
+        "lr": [1e-3, 5e-4]
+    }
 
-loss_fn = nn.MSELoss()
+    loss_fn = nn.MSELoss()
 
-best_params, best_val_loss = None, float("inf")
-for h1 in param_grid["hidden1"]:
-    for h2 in param_grid["hidden2"]:
-        for dr in param_grid["dropout"]:
-            for lr in param_grid["lr"]:
-                model = FFN(input_dim, output_dim, h1, h2, dr).to(device)
-                optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-                # Short training for tuning
-                for epoch in range(50):
-                    train(train_loader, model, loss_fn, optimizer)
-                val_loss = test(val_loader, model, loss_fn)
-                print(f"h1={h1}, h2={h2}, dr={dr}, lr={lr} | Val Loss={val_loss:.4f}")
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    best_params = (h1, h2, dr, lr)
+    best_params, best_val_loss = None, float("inf")
+    for h1 in param_grid["hidden1"]:
+        for h2 in param_grid["hidden2"]:
+            for dr in param_grid["dropout"]:
+                for lr in param_grid["lr"]:
+                    model = FFN(input_dim, output_dim, h1, h2, dr).to(device)
+                    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+                    # Short training for tuning
+                    for epoch in range(50):
+                        train(train_loader, model, loss_fn, optimizer)
+                    val_loss = test(val_loader, model, loss_fn)
+                    print(f"h1={h1}, h2={h2}, dr={dr}, lr={lr} | Val Loss={val_loss:.4f}")
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        best_params = (h1, h2, dr, lr)
 
-print(f"\nBest Params: {best_params} | Best Val Loss: {best_val_loss:.4f}")
+    print(f"\nBest Params: {best_params} | Best Val Loss: {best_val_loss:.4f}")
 
-# Final training
-train_val_loader = DataLoader(ConcatDataset([train_ds, val_ds]), batch_size=32, shuffle=True)
+    # Final training
+    train_val_loader = DataLoader(ConcatDataset([train_ds, val_ds]), batch_size=32, shuffle=True)
 
-# 256, 128, 0.2, 0.001
-h1, h2, dr, lr = best_params
-model = FFN(input_dim, output_dim, h1, h2, dr).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+    # 256, 128, 0.2, 0.001
+    h1, h2, dr, lr = best_params
+    model = FFN(input_dim, output_dim, h1, h2, dr).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 
-epochs = 300
-train_losses,test_losses = [], []
+    epochs = 300
+    train_losses,test_losses = [], []
 
-for t in range(epochs):
-    train_loss = train(train_val_loader, model, loss_fn, optimizer)
-    test_loss=test(val2_loader, model, loss_fn)
-    train_losses.append(train_loss)
-    test_losses.append(test_loss)
-    if (t+1) % 50 == 0:
-        print(f"Epoch {t+1} | Train Loss: {train_loss:.4f}) | Test Loss: {test_loss:.4f}")
+    for t in range(epochs):
+        train_loss = train(train_val_loader, model, loss_fn, optimizer)
+        test_loss=test(val2_loader, model, loss_fn)
+        train_losses.append(train_loss)
+        test_losses.append(test_loss)
+        if (t+1) % 50 == 0:
+            print(f"Epoch {t+1} | Train Loss: {train_loss:.4f}) | Test Loss: {test_loss:.4f}")
 
-# Plot training curve
-plt.figure(figsize=(8, 5))
-plt.plot(train_losses, label="Train Loss")
-plt.plot(test_losses, label="Test Loss")
-plt.xlabel("Epochs")
-plt.ylabel("MSE Loss")
-plt.legend()
-plt.show()
+    # Plot training curve
+    plt.figure(figsize=(8, 5))
+    plt.plot(train_losses, label="Train Loss")
+    plt.plot(test_losses, label="Test Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("MSE Loss")
+    plt.legend()
+    plt.show()
 
-torch.save(model.state_dict(), "tg_prediction_from_lm_genes.pth")
-print("Saved PyTorch Model State to tg_prediction_from_lm_genes.pth")
+    torch.save(model.state_dict(), "tg_prediction_from_lm_genes.pth")
+    print("Saved PyTorch Model State to tg_prediction_from_lm_genes.pth")
 
-# Final Test Evaluation
-# Load model from saved file
-final_model = FFN(input_dim, output_dim, h1, h2, dr).to(device)
-final_model.load_state_dict(torch.load("tg_prediction_from_lm_genes.pth"))
-final_model.eval()
+    # Final Test Evaluation
+    # Load model from saved file
+    final_model = FFN(input_dim, output_dim, h1, h2, dr).to(device)
+    final_model.load_state_dict(torch.load("tg_prediction_from_lm_genes.pth"))
+    final_model.eval()
 
-# Evaluate on final test set
-final_test_loss = test(test_loader, final_model, loss_fn)
-print(f"\nFinal Test Loss (unseen data): {final_test_loss:.4f}")
+    # Evaluate on final test set
+    final_test_loss = test(test_loader, final_model, loss_fn)
+    print(f"\nFinal Test Loss (unseen data): {final_test_loss:.4f}")
+
+if __name__ == "__main__":
+    main()
