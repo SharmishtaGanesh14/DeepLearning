@@ -1,3 +1,9 @@
+# Date created: 15/08/2025
+# Author: Sharmishta G
+# Supervisor: Shyam Rajagopalan
+
+# Aim: Visualize at the weights and gradients of the layers
+
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
