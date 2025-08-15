@@ -1,3 +1,12 @@
+# Date created: 13/08/2025
+# Date updated: 15/08/2025
+# Author: Sharmishta G
+# Supervisor: Shyam Rajagopalan
+
+# Aim: Develop a model to predict target genes from a set of landmark genes
+# Explore different ways of encoding input data.
+# Tune hyperparameters for improved performance.
+
 import pandas as pd
 import torch
 import torch.nn as nn
