@@ -19,10 +19,11 @@ from sklearn.decomposition import PCA
 # Device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 # Data Loading
-def load_and_clean(lm_path, tg_path,n_pca_components=None):
-    lm_df = pd.read_csv(lm_path, header=None).iloc[1:, 4:]
-    tg_df = pd.read_csv(tg_path, header=None).iloc[1:, 4:]
+def load_and_clean(lm_path, tg_path, n_pca_components=None):
+    lm_df = pd.read_csv(lm_path, header=0).iloc[:, 4:]
+    tg_df = pd.read_csv(tg_path, header=0).iloc[:, 4:]
 
     X = lm_df.apply(pd.to_numeric).T.values
     y = tg_df.apply(pd.to_numeric).T.values
@@ -52,7 +53,8 @@ def load_and_clean(lm_path, tg_path,n_pca_components=None):
         return TensorDataset(torch.tensor(x, dtype=torch.float32),
                              torch.tensor(y, dtype=torch.float32))
 
-    return to_ds(x_train, y_train), to_ds(x_val, y_val),to_ds(x_test,y_test),input_dim, y.shape[1]
+    return to_ds(x_train, y_train), to_ds(x_val, y_val), to_ds(x_test, y_test), input_dim, y.shape[1]
+
 
 # Model
 class FFN(nn.Module):
@@ -73,6 +75,7 @@ class FFN(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
+
 # Training & Testing
 def train(dataloader, model, loss_fn, optimizer):
     model.train()
@@ -90,6 +93,7 @@ def train(dataloader, model, loss_fn, optimizer):
         total_loss += loss.item() * X.size(0)
     return total_loss / len(dataloader.dataset)
 
+
 def test(dataloader, model, loss_fn):
     model.eval()
     total_loss = 0
@@ -101,12 +105,13 @@ def test(dataloader, model, loss_fn):
             total_loss += loss.item() * X.size(0)
     return total_loss / len(dataloader.dataset)
 
+
 def main():
-    train_ds, val_ds,test_ds, input_dim, output_dim = load_and_clean(
+    train_ds, val_ds, test_ds, input_dim, output_dim = load_and_clean(
         "1000G_landmark_genes.csv", "1000G_target_genes.csv")
 
     train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=32)
+    val_loader = DataLoader(val_ds, batch_size=75, shuffle=True)
     test_loader = DataLoader(test_ds, batch_size=32)
 
     param_grid = {
@@ -142,22 +147,21 @@ def main():
     final_optimizer = torch.optim.Adam(final_model.parameters(), lr=lr, weight_decay=1e-5)
 
     epochs = 300
-    train_losses,test_losses = [], []
+    train_losses = []
 
     train_val_loader = DataLoader(ConcatDataset([train_ds, val_ds]), batch_size=32, shuffle=True)
 
     for t in range(epochs):
         train_loss = train(train_val_loader, final_model, loss_fn, final_optimizer)
-        test_loss=test(test_loader, final_model, loss_fn)
         train_losses.append(train_loss)
-        test_losses.append(test_loss)
-        if (t+1) % 50 == 0:
-            print(f"Epoch {t+1} | Train Loss: {train_loss:.4f}) | Test Loss: {test_loss:.4f}")
+        if (t + 1) % 50 == 0:
+            print(f"Epoch {t + 1} | Train Loss: {train_loss:.4f}")
+    test_loss = test(test_loader, final_model, loss_fn)
+    print(f"Test Loss: {test_loss:.4f}")
 
     # Plot training curve
     plt.figure(figsize=(8, 5))
     plt.plot(train_losses, label="Train Loss")
-    plt.plot(test_losses, label="Test Loss")
     plt.xlabel("Epochs")
     plt.ylabel("MSE Loss")
     plt.legend()
@@ -168,6 +172,7 @@ def main():
 
     best_model = FFN(input_dim, output_dim, h1, h2, dr).to(device)
     best_model.load_state_dict(torch.load("tg_prediction_from_lm_genes.pth"))
+
 
 if __name__ == "__main__":
     main()
