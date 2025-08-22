@@ -1,41 +1,54 @@
+# Date created: 22/08/2025
+# Author: Sharmishta G
+# Supervisor: Shyam Rajagopalan
+# Aim: Implement convolution operations from scratch. Assume a 3x3 kernel and apply it on an input image of 32x32.
+# Implement maxpool operation from scratch.
+
 import numpy as np
 
-def apply_padding_striding(matrix, padding_size=1, striding_size=1):
+def apply_padding(matrix, padding_size=1):
     rows, cols = matrix.shape
-    # Pad left and right (columns)
     left_pad = np.zeros((rows, padding_size))
     right_pad = np.zeros((rows, padding_size))
     matrix = np.hstack([left_pad, matrix, right_pad])
-    # Pad top and bottom (rows)
     new_cols = matrix.shape[1]
     top_pad = np.zeros((padding_size, new_cols))
     bottom_pad = np.zeros((padding_size, new_cols))
     matrix = np.vstack([top_pad, matrix, bottom_pad])
-    return matrix/striding_size
+    return matrix
 
-def convolution_operation(input,filter):
-    op=[]
-    inp_shape=input.shape[0]
-    filter_shape=filter.shape[0]
-    i=0
-    j=0
-    while i < -filter_shape+inp_shape+1:
-        j=0
-        while j < -filter_shape+inp_shape+1:
-            op.append((input[i:i+filter_shape,:][:,j:j+filter_shape]*filter).sum())
-            j+=1
-        i += 1
-    op=np.array(op).reshape(inp_shape-filter_shape+1,inp_shape-filter_shape+1)
-    op=apply_padding_striding(op)
+def convolution_operation(input, filter, padding=1, stride=1):
+    input = apply_padding(input, padding)
+    inp_shape = input.shape[0]
+    filter_shape = filter.shape[0]
+    op_shape = ((inp_shape - filter_shape) // stride) + 1
+    op = []
+    for i in range(0, op_shape * stride, stride):
+        for j in range(0, op_shape * stride, stride):
+            patch = input[i:i + filter_shape, j:j + filter_shape]
+            op.append((patch * filter).sum())
+    op = np.array(op).reshape(op_shape, op_shape)
     return op
 
-image1=np.array([[3,0,1,2,7,4],
-        [1,5,8,9,3,1],
-        [2,7,2,5,1,3],
-        [0,1,3,1,7,8],
-        [4,2,1,6,2,8],
-        [2,4,5,2,3,9]])
-filter=np.array([[1,0,-1],
-        [1,0,-1],
-        [1,0,-1]])
-print(convolution_operation(image1,filter))
+def max_pooling_operation(input, filter_shape, stride=1):
+    inp_shape = input.shape[0]
+    op_shape = (inp_shape - filter_shape) // stride + 1
+    op = []
+    for i in range(0, op_shape * stride, stride):
+        for j in range(0, op_shape * stride, stride):
+            patch = input[i:i + filter_shape, j:j + filter_shape]
+            op.append(patch.max())
+    op = np.array(op).reshape(op_shape, op_shape)
+    return op
+
+if __name__ == '__main__':
+    np.random.seed(0)
+    image1 = np.random.randint(0,255,size=(32,32))
+    filter = np.array([[1, 0, -1],
+                       [1, 0, -1],
+                       [1, 0, -1]])
+    op = convolution_operation(image1, filter, padding=1, stride=2)
+    print("Convolution output:\n", op)
+    maxpool_filter_size=3
+    op2 = max_pooling_operation(op, maxpool_filter_size, stride=1)
+    print("Max pooling output:\n", op2)
