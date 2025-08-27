@@ -1,9 +1,7 @@
 # Date created: 16/08/2025
-# Date updated: 21/08/2025
 # Author: Sharmishta G
 # Supervisor: Shyam Rajagopalan
-# Aim: Implement various update rules used to optimize the neural network. You can use PyTorch for the following implementations.
-# SGD, Momentum, AdaGrad, etc.
+# Aim: Implement various update rules used to optimize the neural network
 
 import torch
 
@@ -66,7 +64,7 @@ class RMSProp(Optimizer):
             self.sq_grad_avg[i] = self.beta * self.sq_grad_avg[i] + (1 - self.beta) * (p.grad ** 2)
             p.data -= self.lr * p.grad / (torch.sqrt(self.sq_grad_avg[i]) + self.eps)
 
-#  Adam
+# Adam
 class Adam(Optimizer):
     def __init__(self, params, lr=0.001, betas=(0.9, 0.999), eps=1e-8):
         super().__init__(params, lr)
@@ -92,33 +90,29 @@ class Adam(Optimizer):
             # Update params
             p.data -= self.lr * m_hat / (torch.sqrt(v_hat) + self.eps)
 
-def main():
-    X = torch.randn(20, 10)
-    y = torch.randn(20, 1)
 
-    # Simple linear model
-    model = torch.nn.Linear(10, 1)
-    criterion = torch.nn.MSELoss()
+# Dummy dataset
+X = torch.randn(20, 10)
+y = torch.randn(20, 1)
 
-    # Choose optimizer
-    # optimizer = SGD(model.parameters(), lr=0.1)
-    # optimizer = SGDMomentum(model.parameters(), lr=0.1, momentum=0.9)
-    # optimizer = AdaGrad(model.parameters(), lr=0.1)
-    # optimizer = RMSProp(model.parameters(), lr=0.01)
-    optimizer = Adam(model.parameters(), lr=0.01)
+# Simple linear model
+model = torch.nn.Linear(10, 1)
+criterion = torch.nn.MSELoss()
 
-    # Training loop
-    for epoch in range(5):
-        y_pred = model(X)
-        loss = criterion(y_pred, y)
+# Choose optimizer
+# optimizer = SGD(model.parameters(), lr=0.1)
+# optimizer = SGDMomentum(model.parameters(), lr=0.1, momentum=0.9)
+# optimizer = AdaGrad(model.parameters(), lr=0.1)
+# optimizer = RMSProp(model.parameters(), lr=0.01)
+optimizer = Adam(model.parameters(), lr=0.01)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+# Training loop
+for epoch in range(5):
+    y_pred = model(X)
+    loss = criterion(y_pred, y)
 
-        print(f"Epoch {epoch+1}: Loss = {loss.item():.4f}")
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
 
-if __name__ == "__main__":
-    main()
-
-
+    print(f"Epoch {epoch+1}: Loss = {loss.item():.4f}")
