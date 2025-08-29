@@ -15,6 +15,19 @@ from torch.utils.data import DataLoader
 import numpy as np
 import random
 
+def set_seed(seed=64):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # Ensure deterministic behavior in cuDNN
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 # Hyperparameters and Config
 
 BATCH_SIZE = 64
@@ -31,7 +44,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 DATA_PATH = '../data'
 RANDOM_SEED = 42
 
-torch.manual_seed(RANDOM_SEED)
+set_seed(RANDOM_SEED)
 
 # Dataset mean/std calculation
 data_for_stats = torchvision.datasets.CIFAR10(root=DATA_PATH, train=True,
