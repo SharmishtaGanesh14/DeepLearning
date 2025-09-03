@@ -3,63 +3,77 @@
 # Supervisor: Shyam Rajagopalan
 # Aim: Download MNIST dataset and implement a MNIST classifier
 
+import random
+
+import numpy as np
 import torch
 import torchvision
-from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
+from hyperopt import hp, fmin, tpe, Trials, STATUS_OK
+from sklearn.model_selection import train_test_split
 from torch import nn
-import numpy as np
+from torch.optim import Adam
+from torch.utils.data import DataLoader, random_split
+from torchvision import transforms
+
+
+def set_seed(seed=64):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-root='../data/'
-seed=64
-batch_size=64
-epochs=5
-number_of_conv_layers=1
-kernel_size_first=5
-kernel_size_rest=3
-kernel_size_maxpool=2
-stride_size_maxpool=2
-fc1_out=120
-fc2_out=84
-fc3_out=10 # decided by number of unique layers
-lr=0.001
-seed=64
+
+# Config
+root = '../data/'
+seed = 64
+batch_size = 64
+epochs = 5
+number_of_conv_layers = 1
+kernel_size_first = 5
+kernel_size_rest = 3
+kernel_size_maxpool = 2
+stride_size_maxpool = 2
+fc3_out = 10  # number of unique classes
+
+# Apply seed
+set_seed(seed)
+
 
 class CNN(nn.Module):
-    def __init__(self):
+    def __init__(self, fc1_out, fc2_out):
         super().__init__()
-
         layers = []
         in_channels = 1
 
         for i in range(1, number_of_conv_layers + 1):
-            op_channels = 6 + (2 ** i)  # increasing channels
+            op_channels = 6 + (2 ** i)
             kernel_size = kernel_size_first if i == 1 else kernel_size_rest
-
-            layers.append(nn.Conv2d(in_channels=in_channels,
-                                    out_channels=op_channels,
+            layers.append(nn.Conv2d(in_channels, op_channels,
                                     kernel_size=kernel_size,
-                                    stride=1,
-                                    padding="same"))
+                                    stride=1, padding="same"))
             layers.append(nn.ReLU())
             layers.append(nn.MaxPool2d(kernel_size_maxpool, stride_size_maxpool))
-
             in_channels = op_channels
 
         self.conv = nn.Sequential(*layers)
 
-        # Find flattened size by passing a dummy input
+        # Flatten size
         with torch.no_grad():
-            dummy = torch.zeros(1, 1, 28, 28)  # MNIST shape
+            dummy = torch.zeros(1, 1, 28, 28)
             dummy_out = self.conv(dummy)
             flattened_size = dummy_out.view(1, -1).size(1)
 
-        # Fully connected layers
         self.fc = nn.Sequential(
             nn.Linear(flattened_size, fc1_out),
+            nn.BatchNorm1d(fc1_out),
             nn.ReLU(),
             nn.Linear(fc1_out, fc2_out),
+            nn.BatchNorm1d(fc2_out),
             nn.ReLU(),
             nn.Linear(fc2_out, fc3_out)
         )
@@ -68,47 +82,47 @@ class CNN(nn.Module):
         x = self.conv(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
-        return x,torch.argmax(x, dim=1)
+        return x  # logits only
 
 
-def train(model,optimiser,criterion,train_loader,epoch):
+def train(model, optimiser, criterion, train_loader, epoch):
     model.train()
-    train_loss = 0
-    correct = 0
-    total = 0
-    for batch_idx, (data, target) in enumerate(train_loader):
+    train_loss, correct, total = 0, 0, 0
+    for data, target in train_loader:
         data, target = data.to(device), target.to(device)
         optimiser.zero_grad()
-        op,predicted = model(data)
-        loss = criterion(op, target)
+        logits = model(data)
+        loss = criterion(logits, target)
         loss.backward()
         optimiser.step()
+
         train_loss += loss.item()
+        _, predicted = torch.max(logits, 1)
         total += target.size(0)
-        correct += (predicted==target).sum().item()
+        correct += (predicted == target).sum().item()
 
-    avg_train_loss = train_loss / len(train_loader)
+    avg_loss = train_loss / len(train_loader)
     accuracy = 100. * correct / total
-    print(f"Epoch [{epoch + 1}/{epochs}] - Loss: {avg_train_loss:.4f}, Accuracy: {accuracy:.2f}%")
-    return avg_train_loss, accuracy
+    print(f"Epoch [{epoch + 1}/{epochs}] - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
+    return avg_loss, accuracy
 
-def test(model,test_loader,criterion):
+
+def evaluate(model, loader, criterion):
     model.eval()
-    test_loss = 0
-    correct = 0
-    total = 0
+    total, correct, test_loss = 0, 0, 0
     with torch.no_grad():
-        for batch_idx,(data, target) in enumerate(test_loader):
-            data,target = data.to(device), target.to(device)
-            op,predicted = model(data)
-            test_loss += criterion(op, target).item()
+        for data, target in loader:
+            data, target = data.to(device), target.to(device)
+            logits = model(data)
+            loss = criterion(logits, target)
+            test_loss += loss.item()
+            _, predicted = torch.max(logits, 1)
             total += target.size(0)
-            correct += (predicted==target).sum().item()
-        test_loss = test_loss / len(test_loader)
-        accuracy = 100 * correct / len(test_loader.dataset)
-    print(f"Testing phase")
-    print(f"Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%")
-    return test_loss, accuracy
+            correct += (predicted == target).sum().item()
+    avg_loss = test_loss / len(loader)
+    accuracy = 100. * correct / total
+    return avg_loss, accuracy
+
 
 def main():
     # already ran once and found
@@ -138,29 +152,65 @@ def main():
     # print('mean=', mean.item())
     # print('std=', std.item())
 
-    mean = 0.13066042959690094
-    std = 0.3081077039241791
-
-    Transform = transforms.Compose([
+    mean, std = 0.13066042959690094, 0.3081077039241791
+    transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
-    train_data = torchvision.datasets.MNIST(root=root, train=True, transform=Transform)
-    test_data = torchvision.datasets.MNIST(root=root, train=False, transform=Transform)
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+
+    # Load dataset
+    full_train = torchvision.datasets.MNIST(root=root, train=True, transform=transform, download=True)
+    test_data = torchvision.datasets.MNIST(root=root, train=False, transform=transform, download=True)
+
+    # Split train/val
+    train_size = int(0.8 * len(full_train))
+    val_size = len(full_train) - train_size
+    training, val = random_split(full_train, [train_size, val_size])
+
+    train_val_loader = DataLoader(full_train, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(training, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
-    model = CNN().to(device)
+    # Hyperopt space
+    space = {
+        "hidden1": hp.choice("hidden1", [128, 256, 512]),
+        "hidden2": hp.choice("hidden2", [64, 128, 256]),
+        "lr": hp.loguniform("lr", np.log(1e-5), np.log(1e-2))
+    }
+
     criterion = nn.CrossEntropyLoss()
-    optimiser = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+
+    def objective(params):
+        model = CNN(params["hidden1"], params["hidden2"]).to(device)
+        optimizer = Adam(model.parameters(), lr=params["lr"], weight_decay=1e-5)
+        for epoch in range(epochs):
+            train(model, optimizer, criterion, train_loader, epoch)
+        val_loss, val_acc = evaluate(model, val_loader, criterion)
+        return {"loss": val_loss, "status": STATUS_OK, "accuracy": val_acc}
+
+    trials = Trials()
+    best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=25, trials=trials)
+
+    h1_candidates = [128, 256, 512]
+    h2_candidates = [64, 128, 256]
+
+    h1 = h1_candidates[best["hidden1"]]
+    h2 = h2_candidates[best["hidden2"]]
+    lr = best["lr"]
+
+    print(f"\nBest Hyperparams -> hidden1={h1}, hidden2={h2}, lr={lr:.6f}")
+
+    # Final model
+    model_final = CNN(h1, h2).to(device)
+    optimiser_final = Adam(model_final.parameters(), lr=lr, weight_decay=1e-5)
+
     for epoch in range(epochs):
-        avg_train_loss, accuracy = train(model,optimiser,criterion,train_loader,epoch)
-    avg_test_loss, accuracy = test(model,test_loader,criterion)
+        train(model_final, optimiser_final, criterion, train_val_loader, epoch)
+
+    test_loss, test_acc = evaluate(model_final, test_loader, criterion)
+    print(f"\nTesting phase -> Loss: {test_loss:.4f}, Accuracy: {test_acc:.2f}%")
 
 
 if __name__ == '__main__':
     main()
-
-            
-
-
