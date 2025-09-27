@@ -1,17 +1,17 @@
-import os
+import pickle
 import torch
-import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
+import torch.nn as nn
 from sklearn.model_selection import train_test_split
+from torch.nn.utils.rnn import pad_sequence
+from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 
-# bleu
-
-# Dataset
+# dataset class
 class ImageCaptionDataset(Dataset):
-    def __init__(self, df):
-        self.df = df.reset_index(drop=True)
+    def __init__(self, merged_df):
+        self.df = merged_df
 
     def __len__(self):
         return len(self.df)
@@ -19,70 +19,157 @@ class ImageCaptionDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         img_feat = torch.tensor(row["features"], dtype=torch.float32)
-        cap_embed = torch.tensor(row["embedding"], dtype=torch.float32)
-        return img_feat, cap_embed
+        caption_tokens = torch.tensor(row["caption_tokens"], dtype=torch.long)
+        return img_feat, caption_tokens
 
-# Model
+# collate function to pad captions
+def collate_fn(batch, vocab):
+    img_feats, captions = zip(*batch)
+    img_feats = torch.stack(img_feats, 0)  # [batch, feat_size]
+    captions = pad_sequence(captions, batch_first=True, padding_value=vocab["<PAD>"])  # [batch, max_seq_len]
+    return img_feats, captions
+
+# RNN model
 class ImageCaptionRNN(nn.Module):
-    def __init__(self, img_feat_size=2048, hidden_size=256, embed_size=50, num_layers=1):
+    def __init__(self, img_feat_size, embed_size, hidden_size, vocab_size, embedding_matrix):
         super().__init__()
-        self.img_fc = nn.Linear(img_feat_size, embed_size)
-        self.rnn = nn.RNN(embed_size, hidden_size, num_layers, batch_first=True)
-        self.linear = nn.Linear(hidden_size, embed_size)
+        self.embed = nn.Embedding.from_pretrained(embedding_matrix, freeze=False)
+        self.hidden_init = nn.Linear(img_feat_size, hidden_size)  # init hidden from image
+        self.rnn = nn.RNN(embed_size, hidden_size, batch_first=True)
+        self.fc = nn.Linear(hidden_size, vocab_size)
+        self.start_token_idx = 1  # index of <START> in vocab
+        self.hidden_size = hidden_size
 
-    def forward(self, img_feats):
-        x = self.img_fc(img_feats)         # [batch, seq_len=1, embed_size]
-        hiddens, _ = self.rnn(x)                  # [batch, 1, hidden_size]
-        out = self.linear(hiddens)                # [batch, 1, embed_size]
-        return out.squeeze(1)                     # [batch, embed_size]
+    def forward(self, img_feat, max_len=20):
+        """Autoregressive caption generation"""
+        batch_size = img_feat.size(0)
+        h0 = torch.tanh(self.hidden_init(img_feat)).unsqueeze(0)  # [1, batch, hidden_size]
+
+        start_idx = torch.full((batch_size,), self.start_token_idx, dtype=torch.long, device=img_feat.device)
+        input_t = self.embed(start_idx).unsqueeze(1)  # [batch, 1, embed_size]
+
+        outputs, hidden = [], h0
+        for _ in range(max_len):
+            out, hidden = self.rnn(input_t, hidden)       # [batch, 1, hidden_size]
+            logits = self.fc(out.squeeze(1))              # [batch, vocab_size]
+            outputs.append(logits)
+            predicted_token = logits.argmax(dim=-1)       # greedy prediction
+            input_t = self.embed(predicted_token).unsqueeze(1)
+
+        return torch.stack(outputs, dim=1)  # [batch, seq_len, vocab_size]
 
 def main():
-    # Load data
-    data = pd.read_pickle("DataAndProcessing/ground_truth.pkl")
-    features = pd.read_pickle("DataAndProcessing/features_to_rnn.pkl")
-    merged = pd.merge(data, features, on="image")
+    # Load vocab and data
+    with open("DataAndProcessing/vocab.pkl", "rb") as f:
+        vocab = pickle.load(f)
+    with open("DataAndProcessing/inv_vocab.pkl", "rb") as f:
+        inv_vocab = pickle.load(f)
 
-    train_df, test_df = train_test_split(merged, test_size=0.2, random_state=42)
+    ground_truth = pd.read_pickle("DataAndProcessing/ground_truth.pkl")
+    features_df = pd.read_pickle("DataAndProcessing/features_to_rnn.pkl")
+    merged_df = pd.merge(ground_truth, features_df, on="image")
+    print(f"Merged dataset size: {len(merged_df)}")
+
+    # Split into train/test
+    train_df, test_df = train_test_split(merged_df, test_size=0.2, random_state=42)
     train_dataset = ImageCaptionDataset(train_df)
     test_dataset = ImageCaptionDataset(test_df)
 
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    batch_size = 16
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                              collate_fn=lambda b: collate_fn(b, vocab))
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                             collate_fn=lambda b: collate_fn(b, vocab))
 
-    # Device
+    embedding_matrix = np.load("DataAndProcessing/embedding_matrix.npy")
+    embedding_matrix = torch.tensor(embedding_matrix, dtype=torch.float32)
+    vocab_size, embed_size = embedding_matrix.shape
+
+    # Training setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    hidden_size = 512
+    model = ImageCaptionRNN(
+        img_feat_size=2048,
+        embed_size=embed_size,
+        hidden_size=hidden_size,
+        vocab_size=vocab_size,
+        embedding_matrix=embedding_matrix
+    ).to(device)
 
-    # Model, Loss, Optimizer
-    model = ImageCaptionRNN().to(device)
-    criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    criterion = nn.CrossEntropyLoss(ignore_index=vocab["<PAD>"])  # ignore padding
 
-    # Training
-    EPOCHS = 5
-    for epoch in range(EPOCHS):
+    num_epochs = 5
+
+    # Training loop
+    for epoch in range(num_epochs):
         model.train()
         total_loss = 0
-        for img_feats, cap_embeds in train_loader:
-            img_feats, cap_embeds = img_feats.to(device), cap_embeds.to(device)
-            outputs = model(img_feats)
-            loss = criterion(outputs, cap_embeds)
+        for img_feat, caption_tokens in train_loader:
+            img_feat, caption_tokens = img_feat.to(device), caption_tokens.to(device)
             optimizer.zero_grad()
+            outputs = model(img_feat, max_len=caption_tokens.size(1))  # [batch, seq_len, vocab_size]
+
+            loss = sum(
+                criterion(outputs[:, t, :], caption_tokens[:, t])
+                for t in range(caption_tokens.size(1))
+            )
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
-        print(f"Epoch {epoch+1}/{EPOCHS}, Train Loss: {total_loss/len(train_loader):.4f}")
 
-    # Evaluation
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(train_loader):.4f}")
+
+    # Inference with Corpus BLEU
     model.eval()
-    test_loss = 0
-    with torch.no_grad():
-        for img_feats, cap_embeds in test_loader:
-            img_feats, cap_embeds = img_feats.to(device), cap_embeds.to(device)
-            outputs = model(img_feats)
-            loss = criterion(outputs, cap_embeds)
-            test_loss += loss.item()
-    test_loss /= len(test_loader)
-    print(f"Final Test Loss: {test_loss:.4f}")
+    total_loss, references, hypotheses = 0, [], []
+    smooth_fn = SmoothingFunction().method1
 
-if __name__ == "__main__":
+    with torch.no_grad():
+        for img_feat, caption_tokens in test_loader:
+            img_feat, caption_tokens = img_feat.to(device), caption_tokens.to(device)
+            batch_size, seq_len = img_feat.size(0), caption_tokens.size(1)
+
+            # Forward pass for loss
+            outputs = model(img_feat, max_len=seq_len)
+
+            # Compute loss
+            loss = sum(
+                criterion(outputs[:, t, :], caption_tokens[:, t])
+                for t in range(seq_len)
+            )
+            total_loss += loss.item()
+
+            # Greedy decoding for captions
+            pred_ids = outputs.argmax(dim=-1).cpu().numpy()  # [batch, seq_len]
+            gt_ids = caption_tokens.cpu().numpy()
+
+            for b in range(batch_size):
+                # predicted
+                pred_caption = []
+                for idx in pred_ids[b]:
+                    token = inv_vocab.get(idx, "<UNK>")
+                    if token == "<END>":
+                        break
+                    pred_caption.append(token)
+
+                # ground truth
+                gt_caption = []
+                for idx in gt_ids[b]:
+                    token = inv_vocab.get(idx, "<UNK>")
+                    if token == "<END>":
+                        break
+                    gt_caption.append(token)
+
+                hypotheses.append(pred_caption)
+                references.append([gt_caption])  # corpus_bleu expects list of references per sentence
+
+    # Final scores
+    avg_loss = total_loss / len(test_loader)
+    bleu_score = corpus_bleu(references, hypotheses, smoothing_function=smooth_fn)
+
+    print(f"\nTest Loss: {avg_loss:.4f}")
+    print(f"Corpus BLEU Score: {bleu_score:.4f}")
+
+if __name__ == '__main__':
     main()
