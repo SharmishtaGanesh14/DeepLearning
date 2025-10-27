@@ -123,8 +123,8 @@ def compute_bleu(predictions, references, idx2word):
 
 # Main training
 def main():
-    image_path = "/Users/sharmishtaganesh/Desktop/DeepLearning/Lab15/DataAndProcessing/Images"
-    captions_file = "/Users/sharmishtaganesh/Desktop/DeepLearning/Lab15/DataAndProcessing/captions.txt"
+    image_path = "/home/ibab/Desktop/DeepLearning_Lab/data/Flick8K/Images"
+    captions_file = "/home/ibab/Desktop/DeepLearning_Lab/data/Flick8K/captions.txt"
 
     transform = transforms.Compose(
         [
