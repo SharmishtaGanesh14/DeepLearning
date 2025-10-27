@@ -8,7 +8,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Dataset
 class TranslationDataset(Dataset):
-    def __init__(self, csv_file, src_col='Hindi', trg_col='English', max_len=20):
+    def __init__(self, csv_file, src_col='hindi_sentence', trg_col='english_sentence', max_len=20):
         self.data = pd.read_csv(csv_file)
         self.src_col = src_col
         self.trg_col = trg_col
@@ -26,7 +26,10 @@ class TranslationDataset(Dataset):
         from collections import Counter
         counter = Counter()
         for sent in sentences:
-            counter.update(sent.lower().split())
+            if isinstance(sent, str):  # valid sentence
+                counter.update(sent.lower().split())
+            elif pd.notna(sent):  # non-string but not NaN
+                counter.update(str(sent).lower().split())
         vocab = ["<PAD>", "<START>", "<END>", "<UNK>"]
         for word, freq in counter.items():
             if freq >= min_freq:
@@ -111,7 +114,7 @@ def compute_bleu(preds, refs, idx2word):
 
 # Training Loop
 def main():
-    csv_file = "Hindi_English_Truncated_Corpus.csv"
+    csv_file = "/home/ibab/Desktop/DeepLearning_Lab/Lab16/Hindi_English_Truncated_Corpus.csv"
     max_len = 20
     dataset = TranslationDataset(csv_file, max_len=max_len)
 
