@@ -23,7 +23,6 @@ class Flickr8kDataset:
             self.word2idx, self.idx2word = self.build_vocab(self.caption_df, self.english)
         else:
             self.word2idx, self.idx2word = vocab
-        # For convenience
         self.vocab_size = len(self.word2idx)
 
     def tokenize(self, tokenizer, sentence):
@@ -107,7 +106,23 @@ class DecoderRNN(nn.Module):
         return torch.stack(outputs, dim=1)
 
     def inference(self, features, max_len=20):
-        return self.forward(features, max_len)
+        batch_size = features.size(0)
+        h_t = torch.tanh(self.init_h(features)).unsqueeze(0)
+        i_t = torch.full((1, batch_size), self.start_idx, dtype=torch.long, device=features.device)
+        outputs = []
+
+        for _ in range(max_len):
+            embedding = self.embedding(i_t)
+            output, h_t = self.rnn(embedding, h_t)
+            output = self.fc(output.squeeze(0))
+            _, i_t = torch.max(output, dim=1)
+            outputs.append(i_t.clone())
+
+            # Early stopping if all sequences predict <EOS>
+            if torch.all(i_t == self.end_idx):
+                break
+
+        return torch.stack(outputs, dim=1)
 
 # Full model
 class ImageCaptioningModel(nn.Module):
@@ -123,16 +138,16 @@ class ImageCaptioningModel(nn.Module):
 
     def inference(self, image, max_len=20):
         features = self.encoder(image)
-        output = self.decoder.inference(features, max_len)
+        with torch.no_grad():
+            output = self.decoder.inference(features, max_len)
         return output
 
 def ids_to_sentence(ids, idx2word):
-    return [idx2word[i] for i in ids if i not in (0, 1, 2)]
+    return [idx2word[int(i)] for i in ids if int(i) not in (0, 1, 2)]
 
 def compute_bleu(predictions, references, idx2word):
     pred_sentences = [ids_to_sentence(pred, idx2word) for pred in predictions]
     ref_sentences = [[ids_to_sentence(ref, idx2word)] for ref in references]
-    from nltk.translate.bleu_score import SmoothingFunction
     smoothie = SmoothingFunction().method4
     return corpus_bleu(ref_sentences, pred_sentences, smoothing_function=smoothie)
 
@@ -143,10 +158,8 @@ def main():
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        ),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225])
     ])
 
     dataset = Flickr8kDataset(image_dir, caption_file, transform)
@@ -157,11 +170,9 @@ def main():
     train_loader = DataLoader(train_data, batch_size=64, shuffle=True, num_workers=8)
     test_loader = DataLoader(test_data, batch_size=64, shuffle=False, num_workers=8)
 
-    model = ImageCaptioningModel(
-        embedding_size=256,
-        hidden_size=512,
-        vocab_size=len(dataset.word2idx)
-    ).to(device)
+    model = ImageCaptioningModel(embedding_size=256,
+                                 hidden_size=512,
+                                 vocab_size=len(dataset.word2idx)).to(device)
 
     params = list(model.decoder.parameters()) + list(model.encoder.fc.parameters())
     criterion = nn.CrossEntropyLoss(ignore_index=dataset.word2idx['<PAD>'])
@@ -199,13 +210,20 @@ def main():
                 outputs_flat = outputs.view(-1, outputs.shape[-1])
                 captions_flat = captions.view(-1)
                 val_loss += criterion(outputs_flat, captions_flat).item() * images.size(0)
+
                 for img, caption in zip(images, captions):
                     pred_ids = model.inference(img.unsqueeze(0), max_len=20)
-                    all_preds.append(pred_ids.squeeze(0).tolist())  # ensure list of IDs
+                    all_preds.append(pred_ids.squeeze(0).tolist())
                     all_refs.append(caption.tolist())
 
         bleu_score = compute_bleu(all_preds, all_refs, dataset.idx2word)
         print(f"Epoch {epoch+1} - Val Loss: {val_loss/len(test_loader.dataset):.4f} - BLEU: {bleu_score:.4f}")
+
+        # Print a few sample predictions
+        for i in range(3):
+            pred_sentence = " ".join(ids_to_sentence(all_preds[i], dataset.idx2word))
+            ref_sentence = " ".join(ids_to_sentence(all_refs[i], dataset.idx2word))
+            print(f"Sample {i+1}:\nPred: {pred_sentence}\nRef : {ref_sentence}\n")
 
     torch.save(model.state_dict(), "rnn_captioning.pth")
 

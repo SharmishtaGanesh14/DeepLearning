@@ -176,16 +176,15 @@ def translate_autoregressive(model, src, src_vocab, trg_vocab, idx2trg, max_len=
         if (next_tokens == trg_vocab[EOS_TOKEN]).all():
             break
 
-    # Convert token ids to actual words for each sequence in batch
+    # Return list of token id lists (exclude SOS and after EOS)
     translations = []
     for seq in generated_tokens.cpu().numpy():
-        words = []
-        for idx in seq[1:]:  # skip SOS_TOKEN
+        tokens = []
+        for idx in seq[1:]:
             if idx == trg_vocab[EOS_TOKEN]:
                 break
-            if idx != trg_vocab[PAD_TOKEN]:
-                words.append(idx2trg[idx])
-        translations.append(" ".join(words))
+            tokens.append(int(idx))
+        translations.append(tokens)
     return translations
 
 def main():
@@ -242,7 +241,7 @@ def main():
             for src, trg in tqdm(test_loader, desc=f"Epoch {epoch + 1} [test]"):
                 translations = translate_autoregressive(model, src, dataset.src2idx, dataset.trg2idx, dataset.idx2trg,
                                                         max_len=MAX_LEN)
-                all_preds.extend([t.split() for t in translations])
+                all_preds.extend(translations)  # list of list of token ids
                 all_refs.extend([[ids_to_sentence(r.tolist(), dataset.idx2trg)] for r in trg])
         bleu = compute_bleu(all_preds, all_refs, dataset.idx2trg)
         print(f"Epoch {epoch+1} | BLEU-4: {bleu:.4f}")
