@@ -17,7 +17,6 @@ class Flickr8kDataset:
         self.image_path = image_path
         self.caption_df = pd.read_csv(caption_file)
         self.transform = transform
-
         self.english = spacy.load("en_core_web_sm")
         if vocab is None:
             self.word2idx, self.idx2word = self.build_vocab(self.caption_df, self.english)
@@ -117,6 +116,7 @@ class DecoderRNN(nn.Module):
             output = self.fc(output.squeeze(0))
             _, i_t = torch.max(output, dim=1)
             outputs.append(i_t.clone())
+            i_t = i_t.unsqueeze(0)
 
             # Early stopping if all sequences predict <EOS>
             if torch.all(i_t == self.end_idx):
