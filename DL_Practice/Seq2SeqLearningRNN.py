@@ -4,48 +4,58 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
 from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
+import spacy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Dataset
+PAD_TOKEN = "<pad>"
+SOS_TOKEN = "<sos>"
+EOS_TOKEN = "<eos>"
+UNK_TOKEN = "<unk>"
+MAX_LEN = 20  # keep same as before
+
 class TranslationDataset(Dataset):
-    def __init__(self, csv_file, src_col='hindi_sentence', trg_col='english_sentence', max_len=20):
+    def __init__(self, csv_file, src_col='hindi_sentence', trg_col='english_sentence', max_len=MAX_LEN):
         self.data = pd.read_csv(csv_file)
         self.src_col = src_col
         self.trg_col = trg_col
         self.max_len = max_len
 
-        self.src_vocab = self.build_vocab(self.data[src_col])
-        self.trg_vocab = self.build_vocab(self.data[trg_col])
+        # Clean & normalize text
+        self.data[self.src_col] = self.data[self.src_col].astype(str).str.lower().str.strip()
+        self.data[self.trg_col] = self.data[self.trg_col].astype(str).str.lower().str.strip()
 
-        self.src2idx = {w: i for i, w in enumerate(self.src_vocab)}
-        self.trg2idx = {w: i for i, w in enumerate(self.trg_vocab)}
-        self.idx2src = {i: w for w, i in self.src2idx.items()}
-        self.idx2trg = {i: w for w, i in self.trg2idx.items()}
+        # Tokenizers
+        self.english = spacy.load("en_core_web_sm")
+        self.hindi = spacy.blank("hi")
 
-    def build_vocab(self, sentences, min_freq=1):
+        # Build vocabularies
+        self.src2idx, self.idx2src = self.build_vocab(self.data[self.src_col], self.hindi)
+        self.trg2idx, self.idx2trg = self.build_vocab(self.data[self.trg_col], self.english)
+
+    def tokenize(self, tokenizer, sentence):
+        return [token.text.lower() for token in tokenizer(sentence)]
+
+    def build_vocab(self, texts, tokenizer, min_freq=1):
         counter = Counter()
-        for sent in sentences:
-            if isinstance(sent, str):  # valid sentence
-                counter.update(sent.lower().split())
-            elif pd.notna(sent):  # non-string but not NaN
-                counter.update(str(sent).lower().split())
-        vocab = ["<PAD>", "<START>", "<END>", "<UNK>"]
-        for word, freq in counter.items():
-            if freq >= min_freq:
-                vocab.append(word)
-        return vocab
+        for text in texts:
+            tokens = self.tokenize(tokenizer, text)
+            counter.update(tokens)
 
+        vocab = {PAD_TOKEN: 0, SOS_TOKEN: 1, EOS_TOKEN: 2, UNK_TOKEN: 3}
+        for tok, freq in counter.items():
+            if freq >= min_freq and tok not in vocab:
+                vocab[tok] = len(vocab)
+        itos = {i: tok for tok, i in vocab.items()}
+        return vocab, itos
 
-    def encode_sentence(self, sentence, vocab_map, max_len, add_start_end=False):
-        tokens = [vocab_map.get(w, vocab_map["<UNK>"]) for w in sentence.lower().split()]
-        if add_start_end:
-            tokens = [vocab_map["<START>"]] + tokens + [vocab_map["<END>"]]
-        if len(tokens) < max_len:
-            tokens += [vocab_map["<PAD>"]] * (max_len - len(tokens))
-        else:
-            tokens = tokens[:max_len]
-        return tokens
+    def encode(self, sentence, vocab, tokenizer):
+        tokens = self.tokenize(tokenizer, sentence)
+        ids = [vocab[SOS_TOKEN]] + [vocab.get(tok, vocab[UNK_TOKEN]) for tok in tokens] + [vocab[EOS_TOKEN]]
+        ids = ids[:self.max_len]
+        while len(ids) < self.max_len:
+            ids.append(vocab[PAD_TOKEN])
+        return ids
 
     def __len__(self):
         return len(self.data)
@@ -53,11 +63,13 @@ class TranslationDataset(Dataset):
     def __getitem__(self, idx):
         src_sent = self.data.iloc[idx][self.src_col]
         trg_sent = self.data.iloc[idx][self.trg_col]
-        src_tokens = self.encode_sentence(src_sent, self.src2idx, self.max_len)
-        trg_tokens = self.encode_sentence(trg_sent, self.trg2idx, self.max_len, add_start_end=True)
+
+        src_tokens = self.encode(src_sent, self.src2idx, self.hindi)
+        trg_tokens = self.encode(trg_sent, self.trg2idx, self.english)
+
         return torch.tensor(src_tokens, dtype=torch.long), torch.tensor(trg_tokens, dtype=torch.long)
 
-# LSTM Encoder and Decoder
+# LSTM Encoder
 class EncoderLSTM(nn.Module):
     def __init__(self, input_dim, emb_dim, hid_dim):
         super().__init__()
@@ -69,6 +81,7 @@ class EncoderLSTM(nn.Module):
         outputs, hidden = self.rnn(embedded)
         return hidden  # (h, c)
 
+# LSTM Decoder
 class DecoderLSTM(nn.Module):
     def __init__(self, output_dim, emb_dim, hid_dim):
         super().__init__()
@@ -97,10 +110,10 @@ class Seq2Seq(nn.Module):
         trg_len = trg.size(1)
         trg_vocab_size = self.decoder.fc_out.out_features
 
-        outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
         hidden = self.encoder(src)
 
-        input = trg[:, 0]  # <START>
+        outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
+        input = trg[:, 0]  # <sos>
         for t in range(1, trg_len):
             output, hidden = self.decoder(input, hidden)
             outputs[:, t] = output
@@ -110,7 +123,7 @@ class Seq2Seq(nn.Module):
 
 # BLEU Utils
 def ids_to_sentence(ids, idx2word):
-    return [idx2word[i] for i in ids if i not in (0, 1, 2)]
+    return [idx2word[i] for i in ids if i not in (0, 1, 2)]  # pad, sos, eos
 
 def compute_bleu(preds, refs, idx2word):
     pred_sentences = [ids_to_sentence(p, idx2word) for p in preds]
@@ -131,18 +144,18 @@ def main():
     train_loader = DataLoader(train_data, batch_size=64, shuffle=True)
     test_loader = DataLoader(test_data, batch_size=64)
 
-    INPUT_DIM = len(dataset.src_vocab)
-    OUTPUT_DIM = len(dataset.trg_vocab)
+    INPUT_DIM = len(dataset.src2idx)
+    OUTPUT_DIM = len(dataset.trg2idx)
     ENC_EMB_DIM = 64
     DEC_EMB_DIM = 64
     HID_DIM = 128
 
     encoder = EncoderLSTM(INPUT_DIM, ENC_EMB_DIM, HID_DIM).to(device)
     decoder = DecoderLSTM(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM).to(device)
-    model = Seq2Seq(encoder, decoder, trg_pad_idx=dataset.trg2idx["<PAD>"], device=device).to(device)
+    model = Seq2Seq(encoder, decoder, trg_pad_idx=dataset.trg2idx[PAD_TOKEN], device=device).to(device)
 
     optimizer = torch.optim.Adam(model.parameters())
-    criterion = nn.CrossEntropyLoss(ignore_index=dataset.trg2idx["<PAD>"])
+    criterion = nn.CrossEntropyLoss(ignore_index=dataset.trg2idx[PAD_TOKEN])
 
     EPOCHS = 10
     for epoch in range(EPOCHS):
