@@ -187,7 +187,7 @@ def translate_autoregressive(model, src, src_vocab, trg_vocab, idx2trg, max_len=
     return translations
 
 def main():
-    csv_file = "/home/ibab/Desktop/DeepLearning_Lab/Lab16/Hindi_English_Truncated_Corpus.csv"
+    csv_file = "/Users/sharmishtaganesh/Desktop/DeepLearning/Lab16/Hindi_English_Truncated_Corpus.csv"
     max_len = 20
     dataset = TranslationDataset(csv_file, max_len=max_len)
     train_size = int(0.8*len(dataset))
