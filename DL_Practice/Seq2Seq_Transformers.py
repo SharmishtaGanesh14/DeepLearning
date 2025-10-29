@@ -133,10 +133,9 @@ def ids_to_sentence(ids, idx2word):
 
 def compute_bleu(preds, refs, idx2word):
     pred_sentences = [ids_to_sentence(p, idx2word) for p in preds]
-    ref_sentences = [[ids_to_sentence(r, idx2word)] for r in refs]
+    ref_sentences = [[ids_to_sentence(r, idx2word)] for r in refs]  # Keep corpus_bleu format
     smoothie = SmoothingFunction().method4
     return corpus_bleu(ref_sentences, pred_sentences, smoothing_function=smoothie)
-
 
 def translate_autoregressive(model, src, src_vocab, trg_vocab, idx2trg, max_len=MAX_LEN):
     model.eval()
@@ -242,7 +241,7 @@ def main():
                 translations = translate_autoregressive(model, src, dataset.src2idx, dataset.trg2idx, dataset.idx2trg,
                                                         max_len=MAX_LEN)
                 all_preds.extend(translations)  # list of list of token ids
-                all_refs.extend([[ids_to_sentence(r.tolist(), dataset.idx2trg)] for r in trg])
+                all_refs.extend([r.tolist() for r in trg])
         bleu = compute_bleu(all_preds, all_refs, dataset.idx2trg)
         print(f"Epoch {epoch+1} | BLEU-4: {bleu:.4f}")
 
