@@ -20,8 +20,8 @@ Lab10/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt
 Lab10/GD462.GeneQuantRPKM.50FN.samplename.resk10.csv
 Lab10/1000G_landmark_genes.csv
 Lab10/1000G_target_genes.csv
-Lab15/DataAndProcessing/captions.txt
-Lab15/DataAndProcessing/Images/
+data/Flick8K/captions.txt
+data/Flick8K/Images/
 Lab15/DataAndProcessing/features_to_rnn.pkl
 Lab15/DataAndProcessing/ground_truth.pkl
 Lab15/DataAndProcessing/wiki_giga_2024_50_MFT20_vectors_seed_123_alpha_0.75_eta_0.075_combined.txt

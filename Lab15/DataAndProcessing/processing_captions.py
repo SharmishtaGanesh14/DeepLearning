@@ -34,7 +34,7 @@ def main():
         "wiki_giga_2024_50_MFT20_vectors_seed_123_alpha_0.75_eta_0.075_combined.txt"
     )
 
-    df = pd.read_csv("captions.txt", sep=",")
+    df = pd.read_csv("../../data/Flick8K/captions.txt", sep=",")
     print(f"Loaded {len(df)} captions.")
 
     all_tokens = []

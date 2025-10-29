@@ -269,4 +269,4 @@ if __name__ == "__main__":
 
     # Save model weights
     torch.save(model.state_dict(), os.path.join(save_path, "seq2seq_model_lstm.pth"))
-    print(f"\n✅ Model and vocabulary saved successfully in '{save_path}/'")
+    print(f"\nModel and vocabulary saved successfully in '{save_path}/'")
