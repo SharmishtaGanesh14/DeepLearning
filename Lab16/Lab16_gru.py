@@ -90,7 +90,7 @@ def Data_Preprocessing(data):
     Train_loader = DataLoader(Train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     Test_loader = DataLoader(Test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
-    print(f"✅ Data Ready | Source vocab: {len(source_vocab)}, Target vocab: {len(target_vocab)}")
+    print(f"Data Ready | Source vocab: {len(source_vocab)}, Target vocab: {len(target_vocab)}")
     return Train_loader, Test_loader, source_vocab, target_vocab, source_itos, target_itos, hindi, english
 
 # ---------------- MODEL COMPONENTS ----------------
@@ -226,23 +226,23 @@ if __name__ == "__main__":
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), os.path.join(SAVE_DIR, "best_val_loss_model.pth"))
-            print(f"✅ Best Val Loss model saved at epoch {epoch+1}")
+            print(f"Best Val Loss model saved at epoch {epoch+1}")
 
         # Save best by BLEU
         if bleu_score > best_bleu:
             best_bleu = bleu_score
             torch.save(model.state_dict(), os.path.join(SAVE_DIR, "best_bleu_model.pth"))
-            print(f"🌟 Best BLEU model saved at epoch {epoch+1} (BLEU: {bleu_score:.4f})")
+            print(f"Best BLEU model saved at epoch {epoch+1} (BLEU: {bleu_score:.4f})")
 
         # Optional: Save checkpoint every 50 epochs
         if (epoch + 1) % 50 == 0:
             ckpt_path = os.path.join(SAVE_DIR, f"checkpoint_epoch_{epoch+1}.pth")
             torch.save(model.state_dict(), ckpt_path)
-            print(f"💾 Checkpoint saved at {ckpt_path}")
+            print(f"Checkpoint saved at {ckpt_path}")
 
         torch.cuda.empty_cache()
 
-    print(f"\n✅ Training complete! Best Val Loss: {best_val_loss:.4f}, Best BLEU: {best_bleu:.4f}")
+    print(f"\nTraining complete! Best Val Loss: {best_val_loss:.4f}, Best BLEU: {best_bleu:.4f}")
 
     # Plot loss and BLEU
     plt.figure(figsize=(8, 5))

@@ -7,9 +7,7 @@ import torch.optim as optim
 
 torch.manual_seed(1)  # for reproducibility
 
-# --------------------------
 # PART 1: Simple embedding lookup example
-# --------------------------
 word_to_ix = {"hello": 0, "world": 1}
 embeds = nn.Embedding(2, 5)  # vocabulary size = 2, embedding dimension = 5
 lookup_tensor = torch.tensor([word_to_ix["hello"]], dtype=torch.long)
@@ -17,10 +15,7 @@ hello_embed = embeds(lookup_tensor)
 print("Embedding for 'hello':")
 print(hello_embed)
 
-
-# --------------------------
 # PART 2: N-gram Language Model
-# --------------------------
 
 CONTEXT_SIZE = 2   # how many words of context
 EMBEDDING_DIM = 10 # embedding vector size
@@ -110,10 +105,7 @@ print(losses)
 print("\nLearned embedding for 'beauty':")
 print(model.embeddings.weight[word_to_ix["beauty"]])
 
-
-# --------------------------
 # PART 3: CBOW (Continuous Bag of Words) Model
-# --------------------------
 
 CONTEXT_SIZE = 2  # 2 words to the left, 2 to the right
 raw_text = """We are about to study the idea of a computational process.

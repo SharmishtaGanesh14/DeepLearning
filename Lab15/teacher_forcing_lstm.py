@@ -13,7 +13,7 @@ from PIL import Image
 import random
 
 
-# ---------------- Dataset & Dataloader ----------------
+# Dataset & Dataloader
 class ImageCaptionDataset(Dataset):
     def __init__(self, merged_df):
         self.df = merged_df
@@ -35,7 +35,7 @@ def collate_fn(batch):
     return img_feats, captions, img_paths
 
 
-# ---------------- Model ----------------
+# Model
 class ImageCaptionLSTM(nn.Module):
     def __init__(self, img_feat_size, embed_size, hidden_size, vocab_size, embedding_matrix, start_token_idx=1):
         super().__init__()
@@ -72,7 +72,7 @@ class ImageCaptionLSTM(nn.Module):
             return torch.stack(outputs, dim=1)
 
 if __name__ == "__main__":
-    # ---------------- Load data ----------------
+    # Load data
     with open("DataAndProcessing/vocab.pkl", "rb") as f:
         vocab = pickle.load(f)
     with open("DataAndProcessing/inv_vocab.pkl", "rb") as f:
@@ -92,14 +92,14 @@ if __name__ == "__main__":
     embedding_matrix = torch.tensor(np.load("DataAndProcessing/embedding_matrix.npy"), dtype=torch.float32)
     vocab_size, embed_size = embedding_matrix.shape
 
-    # ---------------- Setup model ----------------
+    # Setup model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ImageCaptionLSTM(2048, embed_size, 512, vocab_size, embedding_matrix).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.CrossEntropyLoss(ignore_index=vocab["<PAD>"])
     num_epochs = 100
 
-    # ---------------- Training ----------------
+    # Training
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0
@@ -113,12 +113,12 @@ if __name__ == "__main__":
             total_loss += loss.item()
         print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {total_loss / len(train_loader):.4f}")
 
-    # ---------------- Save model ----------------
+    # Save model
     torch.save(model.state_dict(), "DataAndProcessing/image_caption_lstm.pth")
     torch.save(optimizer.state_dict(), "DataAndProcessing/optimizer.pth")
     print("Model and optimizer saved successfully.")
 
-    # ---------------- Evaluation ----------------
+    # Evaluation
     model.eval()
     smooth_fn = SmoothingFunction().method1
     bleu_scores = []
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     print(f"Average BLEU score: {np.mean(bleu_scores):.4f}")
 
 
-    # ---------------- Caption Generation ----------------
+    # Caption Generation
     def generate_caption(model, img_feat, max_len, start_token_idx=1):
         model.eval()
         device = img_feat.device
@@ -157,8 +157,8 @@ if __name__ == "__main__":
         return " ".join(caption_tokens)
 
 
-    # ---------------- Visualization ----------------
-    img_dir = "DataAndProcessing/Images"  # folder containing all images
+    # Visualization
+    img_dir = "../data/Flick8K/Images"  # folder containing all images
     N = 5
     sample_indices = random.sample(range(len(test_df)), N)
     plt.figure(figsize=(15, N * 3))

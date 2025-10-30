@@ -10,7 +10,7 @@ from torchvision.models import ResNet50_Weights
 
 def main():
     # load ground truth csv
-    df = pd.read_csv("captions.txt",sep=',')
+    df = pd.read_csv("../../data/Flick8K/captions.txt", sep=',')
 
     # load default pretrained weights
     resnet = models.resnet50(weights=ResNet50_Weights.DEFAULT)
