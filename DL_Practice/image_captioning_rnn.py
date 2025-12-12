@@ -84,6 +84,7 @@ class DecoderRNN(nn.Module):
         self.vocab_size = vocab_size
         self.start_idx = start_idx
         self.end_idx = end_idx
+
         self.init_h = nn.Linear(embedding_size, hidden_size)
         self.embedding = nn.Embedding(vocab_size, embedding_size)
         self.rnn = nn.RNN(embedding_size, hidden_size)

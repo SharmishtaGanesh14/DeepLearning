@@ -95,14 +95,14 @@ for epoch in range(num_epochs):
 
     # --- Visualization every 50 epochs ---
     if epoch % 50 == 0 or epoch == num_epochs - 1:
-        # with torch.no_grad():
-        #     latent_space_samples = torch.randn(200, 2)
-        #     generated_samples = generator(latent_space_samples)
-        # plt.figure(figsize=(6, 4))
-        # plt.title(f"Epoch {epoch}")
-        # plt.plot(train_data[:, 0], train_data[:, 1], ".", label="Real Data", alpha=0.3)
-        # plt.plot(generated_samples[:, 0], generated_samples[:, 1], ".", label="Generated Data")
-        # plt.legend()
-        # plt.show()
+        with torch.no_grad():
+            latent_space_samples = torch.randn(200, 2)
+            generated_samples = generator(latent_space_samples)
+        plt.figure(figsize=(6, 4))
+        plt.title(f"Epoch {epoch}")
+        plt.plot(train_data[:, 0], train_data[:, 1], ".", label="Real Data", alpha=0.3)
+        plt.plot(generated_samples[:, 0], generated_samples[:, 1], ".", label="Generated Data")
+        plt.legend()
+        plt.show()
 
         print(f"Epoch: {epoch:03d} | Loss D: {loss_discriminator.item():.4f} | Loss G: {loss_generator.item():.4f} | D_acc: {D_acc*100:.2f}% | G_acc: {G_acc*100:.2f}%")
